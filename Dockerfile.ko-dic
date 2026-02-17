@@ -1,0 +1,61 @@
+# Milvus custom build with Lindera ko-dic (Korean morphological analysis)
+#
+# Build for linux/arm64:
+#   docker build --platform linux/arm64 -t milvus-ko:latest -f Dockerfile.ko-dic .
+#
+# Build for linux/amd64:
+#   docker build --platform linux/amd64 -t milvus-ko:latest -f Dockerfile.ko-dic .
+#
+# Takes 30-60+ min (C++ and Rust compilation included)
+
+# ============================================================
+# Stage 1: Build inside the official builder image
+# ============================================================
+FROM --platform=$BUILDPLATFORM milvusdb/milvus-env:ubuntu22.04-20260205-982c238 AS builder
+
+ARG TANTIVY_FEATURES=lindera-ko-dic
+
+COPY . /go/src/github.com/milvus-io/milvus
+WORKDIR /go/src/github.com/milvus-io/milvus
+
+# Build C++ core (with ko-dic) + Go binary
+RUN make milvus TANTIVY_FEATURES=${TANTIVY_FEATURES}
+
+# Copy shared libs from core output to lib/ (mirrors install_milvus.sh)
+RUN mkdir -p lib && \
+    cp internal/core/output/lib/*.so* lib/ 2>/dev/null || true && \
+    cp internal/core/output/lib64/*.so* lib/ 2>/dev/null || true
+
+# ============================================================
+# Stage 2: Minimal runtime image
+# ============================================================
+FROM ubuntu:jammy-20240530
+
+ARG TARGETARCH
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl libaio-dev libgomp1 libopenblas-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN curl -L -o /tini https://github.com/krallin/tini/releases/download/v0.19.0/tini-${TARGETARCH} && \
+    chmod +x /tini
+
+RUN mkdir -p /milvus/bin /milvus/configs /milvus/lib
+
+COPY --from=builder --chown=root:root --chmod=774 \
+    /go/src/github.com/milvus-io/milvus/bin/milvus /milvus/bin/milvus
+
+COPY --from=builder --chown=root:root --chmod=774 \
+    /go/src/github.com/milvus-io/milvus/configs/ /milvus/configs/
+
+COPY --from=builder --chown=root:root --chmod=774 \
+    /go/src/github.com/milvus-io/milvus/lib/ /milvus/lib/
+
+ENV PATH=/milvus/bin:$PATH
+ENV LD_LIBRARY_PATH=/milvus/lib:$LD_LIBRARY_PATH:/usr/lib
+ENV LD_PRELOAD=/milvus/lib/libjemalloc.so
+ENV MALLOC_CONF=background_thread:true
+
+ENTRYPOINT ["/tini", "--"]
+WORKDIR /milvus/
