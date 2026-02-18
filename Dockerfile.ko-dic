@@ -18,6 +18,11 @@ FROM milvusdb/milvus-env:ubuntu22.04-20260205-982c238 AS builder
 
 ARG TANTIVY_FEATURES=lindera-ko-dic
 
+# Conan network resilience (ftp.gnu.org etc. can be slow)
+ENV CONAN_RETRY=5
+ENV CONAN_RETRY_WAIT=10
+ENV CONAN_REQUEST_TIMEOUT=300
+
 COPY . /go/src/github.com/milvus-io/milvus
 WORKDIR /go/src/github.com/milvus-io/milvus
 
