@@ -6,12 +6,15 @@
 # Build for linux/amd64:
 #   docker build --platform linux/amd64 -t milvus-ko:latest -f Dockerfile.ko-dic .
 #
+# Build multi-platform (requires buildx + QEMU):
+#   docker buildx build --platform linux/amd64,linux/arm64 -t milvus-ko:latest -f Dockerfile.ko-dic .
+#
 # Takes 30-60+ min (C++ and Rust compilation included)
 
 # ============================================================
 # Stage 1: Build inside the official builder image
 # ============================================================
-FROM --platform=$BUILDPLATFORM milvusdb/milvus-env:ubuntu22.04-20260205-982c238 AS builder
+FROM milvusdb/milvus-env:ubuntu22.04-20260205-982c238 AS builder
 
 ARG TANTIVY_FEATURES=lindera-ko-dic
 
